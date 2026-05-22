@@ -118,15 +118,37 @@ async def scrape_asin(context, asin, results):
     finally:
         await page.close()
 
+import os
+import platform
+
 async def scrape_amazon_async(asins):
     results = []
     
     print("Starting Playwright to scrape Amazon...")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            executable_path='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        )
+        
+        # Auto-detect local Chrome to avoid Playwright install issues
+        executable_path = None
+        system = platform.system()
+        if system == "Darwin":
+            mac_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            if os.path.exists(mac_path):
+                executable_path = mac_path
+        elif system == "Windows":
+            win_paths = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+            ]
+            for path in win_paths:
+                if os.path.exists(path):
+                    executable_path = path
+                    break
+        
+        launch_kwargs = {"headless": False}
+        if executable_path:
+            launch_kwargs["executable_path"] = executable_path
+            
+        browser = await p.chromium.launch(**launch_kwargs)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             viewport={'width': 1280, 'height': 800}
