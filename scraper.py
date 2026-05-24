@@ -81,7 +81,8 @@ async def scrape_asin(context, asin, results):
     print(f"\n--- Scraping ASIN: {asin} ---")
     
     try:
-        await page.goto(url, timeout=45000)
+        # wait_until="domcontentloaded" prevents timeouts if heavy scripts fail to load
+        await page.goto(url, timeout=45000, wait_until="domcontentloaded")
         # Random delay between 2 and 4 seconds
         await page.wait_for_timeout(random.randint(2000, 4000))
         
@@ -99,13 +100,16 @@ async def scrape_asin(context, asin, results):
                 return
         
         # Extract Price
-        price_locator = page.locator('.a-price-whole').first
+        # Try a variety of common Amazon price locators
+        price_locator = page.locator('#corePriceDisplay_desktop_feature_div .a-price .a-offscreen, #corePrice_feature_div .a-price .a-offscreen, .a-price .a-offscreen').first
         if await price_locator.count() == 0:
-            price_locator = page.locator('#priceblock_ourprice, #priceblock_dealprice').first
+            price_locator = page.locator('.a-price-whole').first
+            if await price_locator.count() == 0:
+                price_locator = page.locator('#priceblock_ourprice, #priceblock_dealprice').first
         
         if await price_locator.count() == 0:
-            print(f"[{asin}] No price found -> Skip")
-            results.append({"ASIN": asin, "Status": "Skip - No price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": ""})
+            print(f"[{asin}] No price found -> Skip (Likely out of stock or unavailable)")
+            results.append({"ASIN": asin, "Status": "Skip - No price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": "Likely out of stock or unavailable"})
             return
             
         price_text = (await price_locator.inner_text()).strip()
