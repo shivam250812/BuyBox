@@ -2,7 +2,57 @@ import csv
 import random
 import re
 import asyncio
+import os
+import smtplib
+import ssl
+from email.message import EmailMessage
 from playwright.async_api import async_playwright
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
+SENDER_EMAIL = os.getenv("SENDER_EMAIL") or os.getenv("SMTP_USERNAME")
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD") or os.getenv("SMTP_PASSWORD")
+if SENDER_PASSWORD:
+    SENDER_PASSWORD = SENDER_PASSWORD.replace('"', '').replace("'", "").replace(" ", "")
+RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL") or os.getenv("RECEIVER_EMAIL")
+
+def send_email_notification(asin, seller, fetched_price, adjusted_price):
+    if not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]):
+        print(f"[{asin}] Skipping email notification - missing credentials in .env file.")
+        return
+
+    recipient_list = [email.strip() for email in RECIPIENT_EMAIL.split(',') if email.strip()]
+
+    msg = EmailMessage()
+    msg.set_content(
+        f"Alert! Buy Box lost for ASIN: {asin}.\n\n"
+        f"Current Seller: {seller}\n"
+        f"Fetched Price: {fetched_price}\n"
+        f"Our Adjusted Price: {adjusted_price}\n\n"
+        f"Link: https://www.amazon.com/dp/{asin}"
+    )
+    msg["Subject"] = f"Buy Box Lost - ASIN: {asin}"
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = ", ".join(recipient_list)
+
+    try:
+        context = ssl.create_default_context()
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls(context=context)
+                server.login(SENDER_EMAIL, SENDER_PASSWORD)
+                server.send_message(msg)
+        print(f"[{asin}] Email notification sent successfully to: {', '.join(recipient_list)}")
+    except Exception as e:
+        print(f"[{asin}] Failed to send email: {e}")
 
 def load_asins_from_csv(filename="input.csv"):
     asins = []
@@ -110,6 +160,8 @@ async def scrape_asin(context, asin, results):
                 "New Price": round(new_price, 2), 
                 "Remark": "Seller is other, adjusted price"
             })
+            # Send email notification
+            await asyncio.to_thread(send_email_notification, asin, seller_text, price_val, round(new_price, 2))
             
     except Exception as e:
         print(f"[{asin}] Error during scraping: {e}")
@@ -118,7 +170,6 @@ async def scrape_asin(context, asin, results):
     finally:
         await page.close()
 
-import os
 import platform
 
 async def scrape_amazon_async(asins):
@@ -159,7 +210,7 @@ async def scrape_amazon_async(asins):
         # Block images on setup page too
         await setup_page.route("**/*", lambda route: route.abort() if route.request.resource_type == "image" else route.continue_())
         
-        print("Setting delivery pincode to 110021...")
+        print("Setting delivery pincode to 11002...")
         try:
             await setup_page.goto("https://www.amazon.com/")
             await setup_page.wait_for_timeout(3000)
@@ -171,7 +222,7 @@ async def scrape_amazon_async(asins):
                 
                 pincode_input = setup_page.locator('#GLUXZipUpdateInput')
                 if await pincode_input.count() > 0:
-                    await pincode_input.fill("110021")
+                    await pincode_input.fill("11002")
                     await setup_page.locator('#GLUXZipUpdate').click()
                     await setup_page.wait_for_timeout(2000)
                     
