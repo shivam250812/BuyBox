@@ -144,14 +144,17 @@ async def scrape_asin(context, asin, results):
             return
 
         # Extract Seller
-        seller_locator = page.locator('#sellerProfileTriggerId').first
         seller_text = ""
-        if await seller_locator.count() > 0:
-            seller_text = (await seller_locator.inner_text()).strip()
-        else:
-            merchant_info = page.locator('#merchant-info').first
-            if await merchant_info.count() > 0:
-                seller_text = (await merchant_info.inner_text()).strip()
+        # The main Buy Box usually uses #merchant-info or #tabular-buybox.
+        main_buybox = page.locator('#merchant-info, #tabular-buybox').first
+        if await main_buybox.count() > 0:
+            seller_text = (await main_buybox.inner_text()).strip()
+            
+        # If the main buybox text is empty or missing, fallback to the generic seller ID
+        if not seller_text or seller_text.isspace():
+            seller_locator = page.locator('#sellerProfileTriggerId').first
+            if await seller_locator.count() > 0:
+                seller_text = (await seller_locator.inner_text()).strip()
             
         if not seller_text:
             print(f"[{asin}] No seller found (No buy box) -> Skip")
@@ -291,7 +294,11 @@ if __name__ == "__main__":
         asins_to_scrape = load_asins_from_csv("input.csv")
         if asins_to_scrape:
             print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Loaded {len(asins_to_scrape)} ASINs from input.csv")
-            asyncio.run(scrape_amazon_async(asins_to_scrape))
+            try:
+                asyncio.run(scrape_amazon_async(asins_to_scrape))
+            except Exception as e:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] A critical error occurred (Browser closed or crashed): {e}")
+                print("The script will sleep and try again in the next cycle.")
         else:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] No ASINs found to scrape. Please ensure input.csv has data.")
         
