@@ -83,8 +83,8 @@ async def scrape_asin(context, asin, results):
     try:
         # wait_until="domcontentloaded" prevents timeouts if heavy scripts fail to load
         await page.goto(url, timeout=45000, wait_until="domcontentloaded")
-        # Random delay between 2 and 4 seconds
-        await page.wait_for_timeout(random.randint(2000, 4000))
+        # Slow Down Method: Random delay between 10 and 15 seconds to look more human
+        await page.wait_for_timeout(random.randint(10000, 15000))
         
         # Check for CAPTCHA
         if "captcha" in page.url or await page.locator("form[action='/errors/validateCaptcha']").count() > 0:
