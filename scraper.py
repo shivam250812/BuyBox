@@ -267,10 +267,18 @@ async def scrape_amazon_async(asins):
     else:
         print("\nNo data scraped.")
 
+import time
+
 if __name__ == "__main__":
-    asins_to_scrape = load_asins_from_csv("input.csv")
-    if asins_to_scrape:
-        print(f"Loaded {len(asins_to_scrape)} ASINs from input.csv")
-        asyncio.run(scrape_amazon_async(asins_to_scrape))
-    else:
-        print("No ASINs found to scrape. Please ensure input.csv has data.")
+    print("Initializing 24/7 scraping mode...")
+    while True:
+        asins_to_scrape = load_asins_from_csv("input.csv")
+        if asins_to_scrape:
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Loaded {len(asins_to_scrape)} ASINs from input.csv")
+            asyncio.run(scrape_amazon_async(asins_to_scrape))
+        else:
+            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] No ASINs found to scrape. Please ensure input.csv has data.")
+        
+        # Wait 1 hour (3600 seconds) before running again
+        print("\nFinished scraping cycle. Sleeping for 1 hour before next run...")
+        time.sleep(3600)
