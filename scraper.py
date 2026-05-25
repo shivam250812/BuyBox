@@ -88,16 +88,32 @@ async def scrape_asin(context, asin, results):
         
         # Check for CAPTCHA
         if "captcha" in page.url or await page.locator("form[action='/errors/validateCaptcha']").count() > 0:
-            print(f"⚠️ [{asin}] Captcha detected! Please solve it in the browser.")
-            # Wait until the url no longer contains captcha
+            print(f"⚠️ [{asin}] Captcha detected! Attempting to automatically click 'Continue'...")
+            
+            # Attempt to auto-click the Continue / Submit button
             try:
-                await page.wait_for_url(f"**/{asin}**", timeout=120000) 
-                print(f"[{asin}] Captcha solved, continuing...")
-                await page.wait_for_timeout(3000)
+                # Amazon usually uses a button with text "Continue shopping" or a standard submit button
+                submit_button = page.locator("form[action='/errors/validateCaptcha'] button[type='submit'], form[action='/errors/validateCaptcha'] input[type='submit'], button:has-text('Continue shopping'), a:has-text('Continue shopping')").first
+                if await submit_button.count() > 0:
+                    await submit_button.click()
+                    await page.wait_for_timeout(3000)
             except Exception as e:
-                print(f"[{asin}] Timed out waiting for captcha to be solved.")
-                results.append({"ASIN": asin, "Status": "Skip - Captcha unresolved", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": ""})
-                return
+                pass
+                
+            # Verify if the auto-click worked
+            if "captcha" in page.url or await page.locator("form[action='/errors/validateCaptcha']").count() > 0:
+                print(f"⚠️ [{asin}] Auto-click failed or requires typing! Please solve it manually in the browser.")
+                # Wait until the url no longer contains captcha
+                try:
+                    await page.wait_for_url(f"**/{asin}**", timeout=120000) 
+                    print(f"[{asin}] Captcha solved, continuing...")
+                    await page.wait_for_timeout(3000)
+                except Exception as e:
+                    print(f"[{asin}] Timed out waiting for captcha to be solved.")
+                    results.append({"ASIN": asin, "Status": "Skip - Captcha unresolved", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": ""})
+                    return
+            else:
+                print(f"[{asin}] Auto-click succeeded! Continuing...")
         
         # Extract Price
         # Try a variety of common Amazon price locators
