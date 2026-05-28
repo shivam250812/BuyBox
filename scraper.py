@@ -3,57 +3,39 @@ import random
 import re
 import asyncio
 import os
-import smtplib
-import ssl
-from email.message import EmailMessage
+import time
+import requests
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 465))
-SENDER_EMAIL = os.getenv("SENDER_EMAIL") or os.getenv("SMTP_USERNAME")
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD") or os.getenv("SMTP_PASSWORD")
-if SENDER_PASSWORD:
-    SENDER_PASSWORD = SENDER_PASSWORD.replace('"', '').replace("'", "").replace(" ", "")
-RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL") or os.getenv("RECEIVER_EMAIL")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def send_email_notification(asin, seller, fetched_price, adjusted_price):
-    if not all([SENDER_EMAIL, SENDER_PASSWORD, RECIPIENT_EMAIL]):
-        print(f"[{asin}] Skipping email notification - missing credentials in .env file.")
+def send_telegram_file(filepath):
+    if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
+        print("Skipping Telegram notification - missing bot token or chat ID in .env file.")
         return
 
-    recipient_list = [email.strip() for email in RECIPIENT_EMAIL.split(',') if email.strip()]
-
-    msg = EmailMessage()
-    msg.set_content(
-        f"Alert! Buy Box lost for ASIN: {asin}.\n\n"
-        f"Current Seller: {seller}\n"
-        f"Fetched Price: {fetched_price}\n"
-        f"Our Adjusted Price: {adjusted_price}\n\n"
-        f"Link: https://www.amazon.com/dp/{asin}"
-    )
-    msg["Subject"] = f"Buy Box Lost - ASIN: {asin}"
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = ", ".join(recipient_list)
-
-    try:
-        # Use unverified context to bypass CA certificate issues on certain machines
-        context = ssl._create_unverified_context()
-        if SMTP_PORT == 465:
-            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
-                server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls(context=context)
-                server.login(SENDER_EMAIL, SENDER_PASSWORD)
-                server.send_message(msg)
-        print(f"[{asin}] Email notification sent successfully to: {', '.join(recipient_list)}")
-    except Exception as e:
-        print(f"[{asin}] Failed to send email: {e}")
+    # Support multiple comma-separated chat IDs
+    chat_ids = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(',') if cid.strip()]
+    
+    for chat_id in chat_ids:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+            with open(filepath, 'rb') as f:
+                files = {'document': f}
+                data = {'chat_id': chat_id, 'caption': f"Amazon Buy Box Report: {time.strftime('%Y-%m-%d %H:%M:%S')}"}
+                response = requests.post(url, files=files, data=data)
+                
+            if response.status_code == 200:
+                print(f"Report file {filepath} sent successfully to Telegram chat {chat_id}!")
+            else:
+                print(f"Failed to send to Telegram chat {chat_id}. Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            print(f"Error sending file to Telegram chat {chat_id}: {e}")
 
 def load_asins_from_csv(filename="input.csv"):
     asins = []
@@ -184,8 +166,6 @@ async def scrape_asin(context, asin, results):
                 "New Price": round(new_price, 2), 
                 "Remark": "Seller is other, adjusted price"
             })
-            # Send email notification
-            await asyncio.to_thread(send_email_notification, asin, seller_text, price_val, round(new_price, 2))
             
     except Exception as e:
         print(f"[{asin}] Error during scraping: {e}")
@@ -282,12 +262,13 @@ async def scrape_amazon_async(asins):
                 writer.writeheader()
                 writer.writerows(results)
             print(f"\nData successfully saved to {csv_filename}")
+            
+            # Send the file to Telegram
+            await asyncio.to_thread(send_telegram_file, csv_filename)
         except Exception as e:
             print(f"Failed to save CSV: {e}")
     else:
         print("\nNo data scraped.")
-
-import time
 
 if __name__ == "__main__":
     print("Initializing 24/7 scraping mode...")
