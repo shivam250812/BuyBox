@@ -40,7 +40,8 @@ def send_email_notification(asin, seller, fetched_price, adjusted_price):
     msg["To"] = ", ".join(recipient_list)
 
     try:
-        context = ssl.create_default_context()
+        # Use unverified context to bypass CA certificate issues on certain machines
+        context = ssl._create_unverified_context()
         if SMTP_PORT == 465:
             with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
                 server.login(SENDER_EMAIL, SENDER_PASSWORD)
