@@ -96,9 +96,9 @@ async def update_price(page, asin, new_price):
     # Type it exactly like a human would
     await page.keyboard.type(str(new_price), delay=100)
     
-    # Click on the background of the page to remove focus from the input box
-    # This forces React to trigger the "onBlur" event and show the Save bar
-    await page.mouse.click(10, 10)
+    # Use JavaScript to cleanly remove focus (blur) from the input box.
+    # This prevents us from accidentally clicking the Amazon sidebar!
+    await price_input.evaluate("node => node.blur()")
     await page.wait_for_timeout(3000) # Wait for the sticky bottom bar to pop up
     
     # -------------------------------------------------
