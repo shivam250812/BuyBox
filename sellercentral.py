@@ -82,25 +82,34 @@ async def update_price(page, asin, new_price):
     
     await price_input.wait_for(state="visible", timeout=5000)
     
-    # Fill the new price
+    # Fill the new price using raw keyboard typing to trick React!
     print(f"Entering new price: ${new_price}")
     await price_input.click()
-    await price_input.fill(str(new_price))
     
-    # We must press Tab or Enter to "blur" the input so React knows we changed it!
-    # Otherwise, the "Save all" sticky bar might not appear.
-    await price_input.press("Tab")
-    await page.wait_for_timeout(2000) # Wait for the sticky bottom bar to pop up
+    # Select all existing text and delete it
+    try:
+        await price_input.press("Meta+A")
+    except:
+        pass
+    await price_input.press("Control+A")
+    await price_input.press("Backspace")
+    
+    # Type it exactly like a human would
+    await page.keyboard.type(str(new_price), delay=100)
+    
+    # Press Enter to confirm the value and trigger the sticky bar
+    await page.keyboard.press("Enter")
+    await page.wait_for_timeout(3000) # Wait for the sticky bottom bar to pop up
     
     # -------------------------------------------------
     # 3. CLICK SAVE ALL
     # -------------------------------------------------
     print("Clicking 'Save all'...")
-    # Use a broader selector in case it's not a <button> tag
-    save_all_btn = page.locator("xpath=//*[text()='Save all' or normalize-space()='Save all']").first
+    # Use Playwright's extremely robust role finder
+    save_all_btn = page.get_by_role("button", name="Save all").first
     
     try:
-        await save_all_btn.wait_for(state="visible", timeout=5000)
+        await save_all_btn.wait_for(state="visible", timeout=8000)
         await save_all_btn.click()
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(3000)
