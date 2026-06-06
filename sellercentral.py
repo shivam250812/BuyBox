@@ -63,15 +63,21 @@ async def update_price(page, asin, new_price):
     # -------------------------------------------------
     # 2. LOCATE PRICE INPUT BOX
     # -------------------------------------------------
-    print(f"Locating the price input box...")
+    print(f"Waiting for ASIN {asin} to appear in results...")
     
-    # Find the table row containing the ASIN
-    row = page.locator(f"tr:has-text('{asin}')").first
-    await row.wait_for(state="visible", timeout=15000)
+    # Wait for the ASIN text to physically appear on the screen
+    asin_text = page.get_by_text(asin).first
+    await asin_text.wait_for(state="visible", timeout=20000)
     
-    # The cell containing "Minimum price" has 3 inputs: Price, Min Price, Max Price
-    # The first input in this cell is the main Price.
-    price_cell = row.locator("td:has-text('Minimum price')").first
+    print("ASIN found! Locating the price input box...")
+    
+    # Amazon uses Katana React Grids (divs instead of tr/td).
+    # To find the specific Price cell, we find the deepest container element 
+    # that contains the text "Minimum price" and "Maximum price".
+    # This perfectly isolates the single "Price and shipping cost" cell!
+    price_cell = page.locator("div, td").filter(has_text="Minimum price").filter(has_text="Maximum price").last
+    
+    # The cell contains 3 inputs (Price, Min, Max). The first one is the main Price!
     price_input = price_cell.locator("input").first
     
     await price_input.wait_for(state="visible", timeout=5000)
