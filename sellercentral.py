@@ -86,27 +86,27 @@ async def update_price(page, asin, new_price):
     print(f"Entering new price: ${new_price}")
     await price_input.click()
     
-    # Select all existing text and delete it
-    try:
-        await price_input.press("Meta+A")
-    except:
-        pass
-    await price_input.press("Control+A")
-    await price_input.press("Backspace")
+    # Select all existing text by triple-clicking it (most reliable way)
+    await price_input.click(click_count=3)
+    await page.keyboard.press("Backspace")
+    
+    # Also use fill("") just in case to ensure it's completely empty
+    await price_input.fill("")
     
     # Type it exactly like a human would
     await page.keyboard.type(str(new_price), delay=100)
     
-    # Press Enter to confirm the value and trigger the sticky bar
-    await page.keyboard.press("Enter")
+    # Click on the background of the page to remove focus from the input box
+    # This forces React to trigger the "onBlur" event and show the Save bar
+    await page.mouse.click(10, 10)
     await page.wait_for_timeout(3000) # Wait for the sticky bottom bar to pop up
     
     # -------------------------------------------------
     # 3. CLICK SAVE ALL
     # -------------------------------------------------
     print("Clicking 'Save all'...")
-    # Use Playwright's extremely robust role finder
-    save_all_btn = page.get_by_role("button", name="Save all").first
+    # Use a raw text locator to find the button no matter what kind of HTML tag it is!
+    save_all_btn = page.locator("text='Save all'").last
     
     try:
         await save_all_btn.wait_for(state="visible", timeout=8000)
