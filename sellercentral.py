@@ -86,20 +86,26 @@ async def update_price(page, asin, new_price):
     print(f"Entering new price: ${new_price}")
     await price_input.click()
     await price_input.fill(str(new_price))
-    await page.wait_for_timeout(1000) # Wait for the sticky bottom bar to appear
+    
+    # We must press Tab or Enter to "blur" the input so React knows we changed it!
+    # Otherwise, the "Save all" sticky bar might not appear.
+    await price_input.press("Tab")
+    await page.wait_for_timeout(2000) # Wait for the sticky bottom bar to pop up
     
     # -------------------------------------------------
     # 3. CLICK SAVE ALL
     # -------------------------------------------------
     print("Clicking 'Save all'...")
-    save_all_btn = page.locator("button:has-text('Save all')").first
+    # Use a broader selector in case it's not a <button> tag
+    save_all_btn = page.locator("xpath=//*[text()='Save all' or normalize-space()='Save all']").first
     
-    if await save_all_btn.count() > 0 and await save_all_btn.is_visible():
+    try:
+        await save_all_btn.wait_for(state="visible", timeout=5000)
         await save_all_btn.click()
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(3000)
         print(f"✅ Successfully updated price of {asin} to {new_price}!")
-    else:
+    except:
         print("❌ Could not find the 'Save all' button! The price might not have been edited properly.")
 
 async def main():
