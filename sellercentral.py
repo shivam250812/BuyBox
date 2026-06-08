@@ -68,7 +68,8 @@ async def update_price(page, asin, new_price):
     await asin_text.wait_for(state="visible", timeout=20000)
     
     print("ASIN found! Locating the Inventory cell...")
-    inventory_cell = page.locator("div, td").filter(has_text="Available").filter(has_text="(FBM)").last
+    # Find the deepest container that has "Available", "(FBM)", AND an input field!
+    inventory_cell = page.locator("div, td").filter(has_text="Available").filter(has_text="(FBM)").filter(has=page.locator("input")).last
     inventory_input = inventory_cell.locator("input").first
     
     await inventory_input.wait_for(state="visible", timeout=5000)
@@ -91,10 +92,9 @@ async def update_price(page, asin, new_price):
     print("Quantity > 0! Locating the price input box...")
     
     # Amazon uses Katana React Grids (divs instead of tr/td).
-    # To find the specific Price cell, we find the deepest container element 
-    # that contains the text "Minimum price" and "Maximum price".
+    # We find the deepest container that contains "Minimum price", "Maximum price", and an input field.
     # This perfectly isolates the single "Price and shipping cost" cell!
-    price_cell = page.locator("div, td").filter(has_text="Minimum price").filter(has_text="Maximum price").last
+    price_cell = page.locator("div, td").filter(has_text="Minimum price").filter(has_text="Maximum price").filter(has=page.locator("input")).last
     
     # The cell contains 3 inputs (Price, Min, Max). The first one is the main Price!
     price_input = price_cell.locator("input").first
