@@ -61,15 +61,34 @@ async def update_price(page, asin, new_price):
     await page.wait_for_load_state("networkidle")
     
     # -------------------------------------------------
-    # 2. LOCATE PRICE INPUT BOX
+    # 2. CHECK AVAILABLE FBM QUANTITY
     # -------------------------------------------------
-    print(f"Waiting for ASIN {asin} to appear in results...")
-    
-    # Wait for the ASIN text to physically appear on the screen
+    # Wait for the ASIN text to physically appear on the screen before proceeding
     asin_text = page.get_by_text(asin).first
     await asin_text.wait_for(state="visible", timeout=20000)
     
-    print("ASIN found! Locating the price input box...")
+    print("ASIN found! Locating the Inventory cell...")
+    inventory_cell = page.locator("div, td").filter(has_text="Available").filter(has_text="(FBM)").last
+    inventory_input = inventory_cell.locator("input").first
+    
+    await inventory_input.wait_for(state="visible", timeout=5000)
+    qty_str = await inventory_input.input_value()
+    
+    try:
+        available_qty = int(qty_str.strip())
+    except ValueError:
+        available_qty = 0
+        
+    print(f"Available (FBM) Quantity: {available_qty}")
+    
+    if available_qty <= 0:
+        print(f"Quantity is {available_qty}. Skipping price update for {asin}.")
+        return
+        
+    # -------------------------------------------------
+    # 3. LOCATE PRICE INPUT BOX
+    # -------------------------------------------------
+    print("Quantity > 0! Locating the price input box...")
     
     # Amazon uses Katana React Grids (divs instead of tr/td).
     # To find the specific Price cell, we find the deepest container element 
@@ -113,9 +132,9 @@ async def update_price(page, asin, new_price):
         await save_all_btn.click()
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(3000)
-        print(f"✅ Successfully updated price of {asin} to {new_price}!")
+        print(f" Successfully updated price of {asin} to {new_price}!")
     except:
-        print("❌ Could not find the 'Save all' button! The price might not have been edited properly.")
+        print(" Could not find the 'Save all' button! The price might not have been edited properly.")
 
 async def main():
     async with async_playwright() as p:
