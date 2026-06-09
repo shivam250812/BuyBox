@@ -3,8 +3,10 @@ import random
 import re
 import asyncio
 import os
+import sys
 import time
 import requests
+import subprocess
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
@@ -262,6 +264,22 @@ async def scrape_amazon_async(asins):
                 writer.writeheader()
                 writer.writerows(results)
             print(f"\nData successfully saved to {csv_filename}")
+            
+            # Save adjusted prices to a separate file for Seller Central
+            adjusted_results = [r for r in results if r.get('Status') == 'Adjusted' and r.get('New Price')]
+            if adjusted_results:
+                adj_filename = 'adjusted_prices.csv'
+                with open(adj_filename, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(adjusted_results)
+                print(f"Saved {len(adjusted_results)} price adjustments to {adj_filename}")
+                
+                # Automatically trigger sellercentral.py to update these prices!
+                print("\n[Auto-Trigger] Launching sellercentral.py to apply new prices...")
+                # Use sys.executable to ensure we use the same python/venv
+                subprocess.run([sys.executable, "sellercentral.py"])
+                print("[Auto-Trigger] sellercentral.py finished execution.\n")
             
             # Send the file to Telegram
             await asyncio.to_thread(send_telegram_file, csv_filename)

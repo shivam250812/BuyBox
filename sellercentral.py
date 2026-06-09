@@ -1,14 +1,12 @@
 import asyncio
 import sys
 import os
+import csv
 
 from playwright.async_api import async_playwright
 
 # Shared Chrome profile setup
 from chrome_profile import create_browser
-
-TARGET_ASIN = "B0D2MHV9PK"
-TARGET_PRICE = "280.00"
 
 SELLER_CENTRAL_INVENTORY_URL = "https://sellercentral.amazon.com/myinventory/inventory"
 
@@ -136,17 +134,42 @@ async def update_price(page, asin, new_price):
     except:
         print(" Could not find the 'Save all' button! The price might not have been edited properly.")
 
+def load_adjusted_prices(filename="adjusted_prices.csv"):
+    items = []
+    if not os.path.exists(filename):
+        print(f"File {filename} not found.")
+        return items
+    
+    with open(filename, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            asin = row.get("ASIN", "").strip()
+            new_price = row.get("New Price", "").strip()
+            if asin and new_price:
+                items.append((asin, new_price))
+    return items
+
 async def main():
+    items = load_adjusted_prices()
+    if not items:
+        print("No adjusted prices to process. Exiting sellercentral.py")
+        return
+        
+    print(f"Loaded {len(items)} items to update from adjusted_prices.csv")
+    
     async with async_playwright() as p:
         context = await create_browser(p, require_helium=False)
         page = await context.new_page()
         
-        try:
-            await update_price(page, TARGET_ASIN, TARGET_PRICE)
-        except Exception as e:
-            print(f"An error occurred: {e}")
+        for asin, new_price in items:
+            try:
+                print(f"\n======================================")
+                print(f"Processing ASIN: {asin} | Target Price: ${new_price}")
+                await update_price(page, asin, new_price)
+            except Exception as e:
+                print(f"An error occurred while updating {asin}: {e}")
             
-        print("\nClosing browser in 3 seconds...")
+        print("\nAll updates finished. Closing browser in 3 seconds...")
         await asyncio.sleep(3)
         await context.close()
 
