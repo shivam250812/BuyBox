@@ -154,8 +154,8 @@ async def scrape_asin(context, asin, results):
                     "ASIN": asin, "Status": "OK", "Fetched Price": price_val, "Seller": seller_text, "New Price": "", "Remark": "No problem"
                 })
             else:
-                new_price = price_val - 0.03
-                print(f"[{asin}] Seller is '{seller_text}' -> Reducing price by 0.03")
+                new_price = price_val - 0.05
+                print(f"[{asin}] Seller is '{seller_text}' -> Reducing price by 0.05")
                 results.append({
                     "ASIN": asin, "Status": "Adjusted", "Fetched Price": price_val, "Seller": seller_text, "New Price": round(new_price, 2), "Remark": "Seller is other, adjusted price"
                 })

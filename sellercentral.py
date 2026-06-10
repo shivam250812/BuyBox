@@ -2,6 +2,7 @@ import asyncio
 import sys
 import os
 import csv
+import re
 
 from playwright.async_api import async_playwright
 
@@ -99,8 +100,29 @@ async def update_price(page, asin, new_price):
     
     await price_input.wait_for(state="visible", timeout=5000)
     
+    # -------------------------------------------------
+    # NEW DYNAMIC PRICE LOGIC
+    # -------------------------------------------------
+    sc_price_str = await price_input.input_value()
+    try:
+        sc_price_val = float(re.sub(r'[^\d.]', '', sc_price_str))
+    except ValueError:
+        print(f"Could not parse SC Price '{sc_price_str}'. Defaulting to Adjusted Price.")
+        sc_price_val = float(new_price)
+        
+    adjusted_price_val = float(new_price)
+    
+    if sc_price_val <= adjusted_price_val:
+        final_target = round(sc_price_val - 0.05, 2)
+        print(f"SC Price (${sc_price_val}) is <= Adjusted Target (${adjusted_price_val}). Undercutting SC by 0.05 -> Final Target: ${final_target}")
+    else:
+        final_target = adjusted_price_val
+        print(f"Adjusted Target (${adjusted_price_val}) is lower than SC Price (${sc_price_val}). Using Adjusted Target -> Final Target: ${final_target}")
+        
+    final_price_str = f"{final_target:.2f}"
+    
     # Fill the new price using raw keyboard typing to trick React!
-    print(f"Entering new price: ${new_price}")
+    print(f"Entering new price: ${final_price_str}")
     await price_input.click()
     
     # Select all existing text by triple-clicking it (most reliable way)
@@ -111,11 +133,12 @@ async def update_price(page, asin, new_price):
     await price_input.fill("")
     
     # Type it exactly like a human would
-    await page.keyboard.type(str(new_price), delay=100)
+    await page.keyboard.type(final_price_str, delay=100)
     
-    # Use JavaScript to cleanly remove focus (blur) from the input box.
-    # This prevents us from accidentally clicking the Amazon sidebar!
-    await price_input.evaluate("node => node.blur()")
+    # Click the inventory cell to force the price input to lose focus!
+    # Clicking another interactable cell in the React Grid is the most reliable way 
+    # to trigger the Katana 'Save all' sticky bar.
+    await inventory_cell.click()
     await page.wait_for_timeout(3000) # Wait for the sticky bottom bar to pop up
     
     # -------------------------------------------------
