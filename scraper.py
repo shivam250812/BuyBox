@@ -7,6 +7,7 @@ import sys
 import time
 import requests
 import subprocess
+import json
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
@@ -38,6 +39,35 @@ def send_telegram_file(filepath):
                 print(f"Failed to send to Telegram chat {chat_id}. Status: {response.status_code}, Response: {response.text}")
         except Exception as e:
             print(f"Error sending file to Telegram chat {chat_id}: {e}")
+
+def send_telegram_message(text):
+    if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
+        return
+
+    chat_ids = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(',') if cid.strip()]
+    
+    for chat_id in chat_ids:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            data = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
+            requests.post(url, data=data)
+        except Exception as e:
+            print(f"Error sending text to Telegram chat {chat_id}: {e}")
+
+HISTORY_FILE = "history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except:
+                return {}
+    return {}
+
+def save_history(history):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=4)
 
 def load_asins_from_csv(filename="input.csv"):
     asins = []
@@ -154,8 +184,8 @@ async def scrape_asin(context, asin, results):
                     "ASIN": asin, "Status": "OK", "Fetched Price": price_val, "Seller": seller_text, "New Price": "", "Remark": "No problem"
                 })
             else:
-                new_price = price_val - 0.05
-                print(f"[{asin}] Seller is '{seller_text}' -> Reducing price by 0.05")
+                new_price = price_val - 0.50
+                print(f"[{asin}] Seller is '{seller_text}' -> Reducing price by 0.50")
                 results.append({
                     "ASIN": asin, "Status": "Adjusted", "Fetched Price": price_val, "Seller": seller_text, "New Price": round(new_price, 2), "Remark": "Seller is other, adjusted price"
                 })
@@ -283,6 +313,18 @@ async def scrape_amazon_async(asins):
             
             # Send the file to Telegram
             await asyncio.to_thread(send_telegram_file, csv_filename)
+            
+            # Record "OK" items into history
+            history = load_history()
+            for r in results:
+                if r.get("Status") == "OK":
+                    asin = r["ASIN"]
+                    if asin not in history:
+                        history[asin] = {}
+                    history[asin]["has_buybox"] = True
+                    history[asin]["price"] = r["Fetched Price"]
+            save_history(history)
+            
         except Exception as e:
             print(f"Failed to save CSV: {e}")
     else:
@@ -290,18 +332,38 @@ async def scrape_amazon_async(asins):
 
 if __name__ == "__main__":
     print("Initializing 24/7 scraping mode...")
+    cycle_count = 0
     while True:
+        cycle_count += 1
         asins_to_scrape = load_asins_from_csv("input.csv")
         if asins_to_scrape:
-            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Loaded {len(asins_to_scrape)} ASINs from input.csv")
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Started Cycle {cycle_count}. Loaded {len(asins_to_scrape)} ASINs from input.csv")
             try:
                 asyncio.run(scrape_amazon_async(asins_to_scrape))
             except Exception as e:
                 print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] A critical error occurred (Browser closed or crashed): {e}")
                 print("The script will sleep and try again in the next cycle.")
+                
+            # Send the 5-Cycle Report!
+            if cycle_count % 5 == 0:
+                print("Generating 5-Cycle Telegram Report...")
+                history = load_history()
+                report_lines = [f"📊 <b>Buy Box Report (Cycle {cycle_count})</b>\n"]
+                for asin in asins_to_scrape:
+                    data = history.get(asin, {})
+                    has_bb = data.get("has_buybox", False)
+                    price = data.get("price", "Unknown")
+                    icon = "✅" if has_bb else "❌"
+                    status_text = "Have BuyBox" if has_bb else "Lost BuyBox"
+                    report_lines.append(f"{icon} <b>{asin}</b> | {status_text} | Price: ${price}")
+                
+                report_text = "\n".join(report_lines)
+                send_telegram_message(report_text)
+                print("Report sent!")
+                
         else:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] No ASINs found to scrape. Please ensure input.csv has data.")
         
         # Wait 1 hour (3600 seconds) before running again
-        print("\nFinished scraping cycle. Sleeping for 1 hour before next run...")
+        print(f"\nFinished Cycle {cycle_count}. Sleeping for 1 hour before next run...")
         time.sleep(3600)

@@ -113,8 +113,8 @@ async def update_price(page, asin, new_price):
     adjusted_price_val = float(new_price)
     
     if sc_price_val <= adjusted_price_val:
-        final_target = round(sc_price_val - 0.05, 2)
-        print(f"SC Price (${sc_price_val}) is <= Adjusted Target (${adjusted_price_val}). Undercutting SC by 0.05 -> Final Target: ${final_target}")
+        final_target = round(sc_price_val - 0.50, 2)
+        print(f"SC Price (${sc_price_val}) is <= Adjusted Target (${adjusted_price_val}). Undercutting SC by 0.50 -> Final Target: ${final_target}")
     else:
         final_target = adjusted_price_val
         print(f"Adjusted Target (${adjusted_price_val}) is lower than SC Price (${sc_price_val}). Using Adjusted Target -> Final Target: ${final_target}")
@@ -154,6 +154,24 @@ async def update_price(page, asin, new_price):
         await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(3000)
         print(f" Successfully updated price of {asin} to {new_price}!")
+        
+        # Save exact updated price to history.json
+        import json
+        history_file = "history.json"
+        try:
+            with open(history_file, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            history = {}
+            
+        if asin not in history:
+            history[asin] = {}
+        history[asin]["has_buybox"] = False
+        history[asin]["price"] = final_target
+        
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=4)
+            
     except:
         print(" Could not find the 'Save all' button! The price might not have been edited properly.")
 
