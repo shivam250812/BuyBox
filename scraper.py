@@ -16,6 +16,7 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+GOOGLE_SHEET_CSV_URL = os.getenv("GOOGLE_SHEET_CSV_URL")
 
 def send_telegram_file(filepath):
     if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
@@ -335,6 +336,29 @@ if __name__ == "__main__":
     cycle_count = 0
     while True:
         cycle_count += 1
+        
+        # Auto-Sync from Google Sheets
+        if GOOGLE_SHEET_CSV_URL:
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Downloading latest ASINs from Google Sheets...")
+            try:
+                # Automatically convert Google Sheet links to CSV export links
+                if "pubhtml" in GOOGLE_SHEET_CSV_URL:
+                    csv_url = GOOGLE_SHEET_CSV_URL.replace("pubhtml", "pub?output=csv")
+                elif "/edit" in GOOGLE_SHEET_CSV_URL:
+                    csv_url = GOOGLE_SHEET_CSV_URL.split("/edit")[0] + "/export?format=csv"
+                else:
+                    csv_url = GOOGLE_SHEET_CSV_URL
+                    
+                response = requests.get(csv_url, timeout=15)
+                if response.status_code == 200:
+                    with open("input.csv", "w", encoding="utf-8") as f:
+                        f.write(response.text)
+                    print("Successfully updated input.csv from cloud!")
+                else:
+                    print(f"Failed to fetch Google Sheet. Status Code: {response.status_code}. Using existing input.csv.")
+            except Exception as e:
+                print(f"Error fetching Google Sheet: {e}. Using existing input.csv.")
+                
         asins_to_scrape = load_asins_from_csv("input.csv")
         if asins_to_scrape:
             print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Started Cycle {cycle_count}. Loaded {len(asins_to_scrape)} ASINs from input.csv")
@@ -348,14 +372,13 @@ if __name__ == "__main__":
             if cycle_count % 5 == 0:
                 print("Generating 5-Cycle Telegram Report...")
                 history = load_history()
-                report_lines = [f"📊 <b>Buy Box Report (Cycle {cycle_count})</b>\n"]
+                report_lines = [f"<b>Buy Box Report (Cycle {cycle_count})</b>\n"]
                 for asin in asins_to_scrape:
                     data = history.get(asin, {})
                     has_bb = data.get("has_buybox", False)
                     price = data.get("price", "Unknown")
-                    icon = "✅" if has_bb else "❌"
                     status_text = "Have BuyBox" if has_bb else "Lost BuyBox"
-                    report_lines.append(f"{icon} <b>{asin}</b> | {status_text} | Price: ${price}")
+                    report_lines.append(f"<b>{asin}</b> | {status_text} | Price: ${price}")
                 
                 report_text = "\n".join(report_lines)
                 send_telegram_message(report_text)
@@ -363,6 +386,10 @@ if __name__ == "__main__":
                 
         else:
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] No ASINs found to scrape. Please ensure input.csv has data.")
+            
+        if cycle_count >= 10:
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Reached maximum limit of 10 cycles. Shutting down scraper...")
+            break
         
         # Wait 1 hour (3600 seconds) before running again
         print(f"\nFinished Cycle {cycle_count}. Sleeping for 1 hour before next run...")
