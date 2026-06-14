@@ -57,7 +57,6 @@ async def update_price(page, asin, new_price):
     
     print("Waiting for search results to load...")
     await page.wait_for_timeout(5000)
-    await page.wait_for_load_state("networkidle")
     
     # -------------------------------------------------
     # 2. CHECK AVAILABLE FBM QUANTITY
@@ -151,7 +150,6 @@ async def update_price(page, asin, new_price):
     try:
         await save_all_btn.wait_for(state="visible", timeout=8000)
         await save_all_btn.click()
-        await page.wait_for_load_state("networkidle")
         await page.wait_for_timeout(3000)
         print(f" Successfully updated price of {asin} to {new_price}!")
         
