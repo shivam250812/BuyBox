@@ -224,78 +224,119 @@ import platform
 async def scrape_amazon_async(asins):
     results = []
     
-    print("Starting Playwright to scrape Amazon...")
-    async with async_playwright() as p:
+    # Split into batches of 100
+    batch_size = 100
+    batches = [asins[i:i + batch_size] for i in range(0, len(asins), batch_size)]
+    print(f"Divided {len(asins)} ASINs into {len(batches)} batches of up to {batch_size} ASINs each.")
+    
+    # Auto-detect local Chrome to avoid Playwright install issues
+    executable_path = None
+    system = platform.system()
+    if system == "Darwin":
+        mac_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        if os.path.exists(mac_path):
+            executable_path = mac_path
+    elif system == "Windows":
+        win_paths = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        ]
+        for path in win_paths:
+            if os.path.exists(path):
+                executable_path = path
+                break
         
-        # Auto-detect local Chrome to avoid Playwright install issues
-        executable_path = None
-        system = platform.system()
-        if system == "Darwin":
-            mac_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-            if os.path.exists(mac_path):
-                executable_path = mac_path
-        elif system == "Windows":
-            win_paths = [
-                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-            ]
-            for path in win_paths:
-                if os.path.exists(path):
-                    executable_path = path
-                    break
+    launch_kwargs = {"headless": False}
+    if executable_path:
+        launch_kwargs["executable_path"] = executable_path
         
-        launch_kwargs = {"headless": False}
-        if executable_path:
-            launch_kwargs["executable_path"] = executable_path
+    for index, batch in enumerate(batches):
+        print(f"\n--- Starting Batch {index + 1}/{len(batches)} (Size: {len(batch)}) ---")
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(**launch_kwargs)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={'width': 1280, 'height': 800}
+            )
             
-        browser = await p.chromium.launch(**launch_kwargs)
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={'width': 1280, 'height': 800}
-        )
-        
-        # We need a setup page to set the pincode first
-        setup_page = await context.new_page()
-        # Block images on setup page too
-        await setup_page.route("**/*", lambda route: route.abort() if route.request.resource_type == "image" else route.continue_())
-        
-        print("Setting delivery pincode to 11002...")
-        try:
-            await setup_page.goto("https://www.amazon.com/")
-            await setup_page.wait_for_timeout(3000)
+            # Setup Page for Postcode
+            setup_page = await context.new_page()
+            await setup_page.route("**/*", lambda route: route.abort() if route.request.resource_type == "image" else route.continue_())
             
-            location_link = setup_page.locator('#nav-global-location-popover-link')
-            if await location_link.count() > 0:
-                await location_link.click()
-                await setup_page.wait_for_timeout(2000)
+            print(f"[{index + 1}] Setting delivery pincode to 10001 (New York)...")
+            try:
+                await setup_page.goto("https://www.amazon.com/", timeout=30000, wait_until="domcontentloaded")
+                await setup_page.wait_for_timeout(3000)
                 
-                pincode_input = setup_page.locator('#GLUXZipUpdateInput')
-                if await pincode_input.count() > 0:
-                    await pincode_input.fill("11002")
-                    await setup_page.locator('#GLUXZipUpdate').click()
+                location_link = setup_page.locator('#glow-ingress-block, #nav-global-location-popover-link').first
+                if await location_link.count() > 0:
+                    await location_link.click()
                     await setup_page.wait_for_timeout(2000)
                     
-                    await setup_page.goto("https://www.amazon.com/")
-                    await setup_page.wait_for_timeout(2000)
-            print("Pincode setup completed.")
-        except Exception as e:
-            print(f"Warning: Could not set pincode automatically: {e}")
-            print("Please set the pincode manually in the browser window within the next 10 seconds.")
-            await setup_page.wait_for_timeout(10000)
-        finally:
-            await setup_page.close()
-            
-        # Limit to 2 concurrent tabs
-        semaphore = asyncio.Semaphore(2)
-        
-        async def sem_scrape(asin):
-            async with semaphore:
-                await scrape_asin(context, asin, results)
+                    pincode_input = setup_page.locator('#GLUXZipUpdateInput').first
+                    if await pincode_input.count() > 0:
+                        await pincode_input.fill("")
+                        await pincode_input.type("10001", delay=80)
+                        await setup_page.wait_for_timeout(1000)
+                        
+                        # Click Apply
+                        apply_btn = setup_page.locator(
+                            "#GLUXZipUpdate input[type='submit'], #GLUXZipUpdate .a-button-input, button:has-text('Apply'), input[aria-labelledby='GLUXZipUpdate-announce']"
+                        ).first
+                        if await apply_btn.count() > 0:
+                            await apply_btn.click()
+                            await setup_page.wait_for_timeout(2000)
+                        
+                        # Click Done/Continue to close popup
+                        try:
+                            done_btn = setup_page.locator(
+                                "button[name='glowDoneButton'], #GLUXConfirmClose, button:has-text('Continue'), button:has-text('Done')"
+                            ).first
+                            if await done_btn.count() > 0:
+                                await done_btn.click()
+                                await setup_page.wait_for_timeout(1000)
+                        except Exception:
+                            pass
+                            
+                        # Verify pincode by reloading
+                        await setup_page.goto("https://www.amazon.com/", timeout=30000, wait_until="domcontentloaded")
+                        await setup_page.wait_for_timeout(2000)
+                        
+                        location_text = ""
+                        try:
+                            loc_el = setup_page.locator("#glow-ingress-line2").first
+                            if await loc_el.count() > 0:
+                                location_text = (await loc_el.inner_text()).strip()
+                        except:
+                            pass
+                        
+                        if "10001" in location_text or "New York" in location_text:
+                            print(f"[{index + 1}] Pincode verified: {location_text}")
+                        else:
+                            print(f"[{index + 1}] WARNING: Pincode may not have been set correctly. Location shows: '{location_text}'")
+                print(f"[{index + 1}] Pincode setup completed.")
+            except Exception as e:
+                print(f"[{index + 1}] Warning: Could not set pincode automatically: {e}")
+            finally:
+                await setup_page.close()
                 
-        tasks = [sem_scrape(asin) for asin in asins]
-        await asyncio.gather(*tasks)
-        
-        await browser.close()
+            # Limit concurrency to 2 concurrent tabs
+            semaphore = asyncio.Semaphore(2)
+            
+            async def sem_scrape(asin):
+                async with semaphore:
+                    await scrape_asin(context, asin, results)
+                    
+            tasks = [sem_scrape(asin) for asin in batch]
+            await asyncio.gather(*tasks)
+            
+            await browser.close()
+            
+        # Add a short delay between batches to be human-like
+        if index < len(batches) - 1:
+            print("Batch finished. Sleeping for 10 seconds before next batch...")
+            await asyncio.sleep(10)
         
     # Write to CSV
     if results:
