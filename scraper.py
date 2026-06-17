@@ -87,6 +87,13 @@ def load_asins_from_csv(filename="input.csv"):
         print(f"Error: {filename} not found. Please create {filename} with your ASINs.")
     return asins
 
+def clean_price(text):
+    if not text:
+        return None
+    text = text.replace(",", "")
+    match = re.search(r"\d+\.?\d*", text)
+    return float(match.group()) if match else None
+
 TARGET_SELLER = "Bargad Healthcare"
 
 async def scrape_asin(context, asin, results):
@@ -138,30 +145,33 @@ async def scrape_asin(context, asin, results):
                     print(f"[{asin}] Auto-click succeeded! Continuing...")
             
             # Extract Price
-            price_locator = page.locator('#corePriceDisplay_desktop_feature_div .a-price .a-offscreen, #corePrice_feature_div .a-price .a-offscreen, .a-price .a-offscreen').first
-            if await price_locator.count() == 0:
-                price_locator = page.locator('.a-price-whole').first
-                if await price_locator.count() == 0:
-                    price_locator = page.locator('#priceblock_ourprice, #priceblock_dealprice').first
+            price_val = None
+            price_locators = [
+                "#corePriceDisplay_desktop_feature_div .a-price",
+                "#corePrice_desktop .a-price",
+                "#tp_price_block_total_price_ww .a-price",
+                ".apexPriceToPay",
+                ".apex-pricetopay-value",
+                "#priceblock_ourprice",
+                "#priceblock_dealprice",
+                "span.a-color-price",
+                ".a-price"
+            ]
+            for selector in price_locators:
+                try:
+                    loc = page.locator(selector).first
+                    if await loc.count() > 0:
+                        price_text = await loc.text_content()
+                        if price_text:
+                            price_val = clean_price(price_text)
+                            if price_val:
+                                break
+                except Exception:
+                    pass
             
-            if await price_locator.count() == 0:
+            if price_val is None:
                 print(f"[{asin}] No price found -> Skip (Likely out of stock or unavailable)")
                 results.append({"ASIN": asin, "Status": "Skip - No price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": "Likely out of stock or unavailable"})
-                return
-                
-            price_text = (await price_locator.inner_text()).strip()
-            # Clean price string
-            clean_price_str = re.sub(r'[^\d.]', '', price_text)
-            if not clean_price_str:
-                print(f"[{asin}] Invalid price format -> Skip")
-                results.append({"ASIN": asin, "Status": "Skip - Invalid price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": ""})
-                return
-                
-            try:
-                price_val = float(clean_price_str)
-            except ValueError:
-                print(f"[{asin}] Could not parse price '{price_text}' -> Skip")
-                results.append({"ASIN": asin, "Status": "Skip - Could not parse price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": ""})
                 return
 
             # Extract Seller
