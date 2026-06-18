@@ -293,11 +293,13 @@ async def scrape_amazon_async(asins):
                 
                 location_link = setup_page.locator('#glow-ingress-block, #nav-global-location-popover-link').first
                 if await location_link.count() > 0:
+                    print(f"[{index + 1}] Location link found. Clicking it...")
                     await location_link.click()
                     await setup_page.wait_for_timeout(2000)
                     
                     pincode_input = setup_page.locator('#GLUXZipUpdateInput').first
                     if await pincode_input.count() > 0:
+                        print(f"[{index + 1}] Pincode input field found. Typing 10001...")
                         await pincode_input.fill("")
                         await pincode_input.type("10001", delay=80)
                         await setup_page.wait_for_timeout(1000)
@@ -307,8 +309,11 @@ async def scrape_amazon_async(asins):
                             "#GLUXZipUpdate input[type='submit'], #GLUXZipUpdate .a-button-input, button:has-text('Apply'), input[aria-labelledby='GLUXZipUpdate-announce']"
                         ).first
                         if await apply_btn.count() > 0:
+                            print(f"[{index + 1}] Apply button found. Clicking it...")
                             await apply_btn.click()
                             await setup_page.wait_for_timeout(2000)
+                        else:
+                            print(f"[{index + 1}] WARNING: Apply button not found!")
                         
                         # Click Done/Continue to close popup
                         try:
@@ -316,27 +321,33 @@ async def scrape_amazon_async(asins):
                                 "button[name='glowDoneButton'], #GLUXConfirmClose, button:has-text('Continue'), button:has-text('Done')"
                             ).first
                             if await done_btn.count() > 0:
+                                print(f"[{index + 1}] Done/Continue button found. Clicking it...")
                                 await done_btn.click()
                                 await setup_page.wait_for_timeout(1000)
-                        except Exception:
-                            pass
-                            
-                        # Verify pincode by reloading
-                        await setup_page.goto("https://www.amazon.com/", timeout=30000, wait_until="domcontentloaded")
-                        await setup_page.wait_for_timeout(2000)
-                        
-                        location_text = ""
-                        try:
-                            loc_el = setup_page.locator("#glow-ingress-line2").first
-                            if await loc_el.count() > 0:
-                                location_text = (await loc_el.inner_text()).strip()
-                        except:
-                            pass
-                        
-                        if "10001" in location_text or "New York" in location_text:
-                            print(f"[{index + 1}] Pincode verified: {location_text}")
-                        else:
-                            print(f"[{index + 1}] WARNING: Pincode may not have been set correctly. Location shows: '{location_text}'")
+                        except Exception as e:
+                            print(f"[{index + 1}] Note: Done/Continue button click exception: {e}")
+                    else:
+                        print(f"[{index + 1}] WARNING: Pincode input field not found! (Possibly international layout)")
+                else:
+                    print(f"[{index + 1}] WARNING: Location link not found!")
+                    
+                # Verify pincode by reloading
+                print(f"[{index + 1}] Verifying pincode by reloading...")
+                await setup_page.goto("https://www.amazon.com/", timeout=30000, wait_until="domcontentloaded")
+                await setup_page.wait_for_timeout(2000)
+                
+                location_text = ""
+                try:
+                    loc_el = setup_page.locator("#glow-ingress-line2").first
+                    if await loc_el.count() > 0:
+                        location_text = (await loc_el.inner_text()).strip()
+                except Exception as e:
+                    print(f"[{index + 1}] Error getting verification text: {e}")
+                
+                if "10001" in location_text or "New York" in location_text:
+                    print(f"[{index + 1}] Pincode verified: {location_text}")
+                else:
+                    print(f"[{index + 1}] WARNING: Pincode verification failed. Location shows: '{location_text}'")
                 print(f"[{index + 1}] Pincode setup completed.")
             except Exception as e:
                 print(f"[{index + 1}] Warning: Could not set pincode automatically: {e}")
