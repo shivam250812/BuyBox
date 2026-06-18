@@ -144,36 +144,58 @@ async def scrape_asin(context, asin, results):
                 else:
                     print(f"[{asin}] Auto-click succeeded! Continuing...")
             
+            # =========================
             # Extract Price
+            # =========================
             price_val = None
-            price_locators = [
+
+            # Primary selectors (strictly scoped to the main product display)
+            price_selectors = [
+                "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
                 "#corePriceDisplay_desktop_feature_div .a-price",
+                "#corePrice_desktop .a-price .a-offscreen",
                 "#corePrice_desktop .a-price",
-                "#tp_price_block_total_price_ww .a-price",
+                "#corePrice_feature_div .a-price .a-offscreen",
+                "#corePrice_feature_div .a-price",
+                "#price_inside_buybox",
+                "#newBuyBoxPrice .a-offscreen",
+                "#newBuyBoxPrice",
+                ".apexPriceToPay .a-offscreen",
                 ".apexPriceToPay",
-                ".apex-pricetopay-value",
                 "#priceblock_ourprice",
                 "#priceblock_dealprice",
-                "span.a-color-price",
-                ".a-price"
+                "#buyBoxAccordion .a-price .a-offscreen",
+                "#buyBoxAccordion .a-price"
             ]
-            for selector in price_locators:
+
+            for selector in price_selectors:
                 try:
-                    loc = page.locator(selector).first
-                    if await loc.count() > 0:
-                        price_text = await loc.text_content()
-                        if price_text:
-                            price_val = clean_price(price_text)
+                    locator = page.locator(selector).first
+                    if await locator.count() > 0:
+                        text = (await locator.text_content()).strip()
+                        if text:
+                            price_val = clean_price(text)
                             if price_val:
+                                print(f"[{asin}] Price found using selector: {selector} -> ${price_val}")
                                 break
                 except Exception:
                     pass
-            
+
+            # =========================
+            # Final Validation
+            # =========================
+
             if price_val is None:
                 print(f"[{asin}] No price found -> Skip (Likely out of stock or unavailable)")
-                results.append({"ASIN": asin, "Status": "Skip - No price", "Fetched Price": "", "Seller": "", "New Price": "", "Remark": "Likely out of stock or unavailable"})
+                results.append({
+                    "ASIN": asin,
+                    "Status": "Skip - No price",
+                    "Fetched Price": "",
+                    "Seller": "",
+                    "New Price": "",
+                    "Remark": "Likely out of stock or unavailable"
+                })
                 return
-
             # Extract Seller
             seller_text = ""
             main_buybox = page.locator('#merchant-info, #tabular-buybox').first
