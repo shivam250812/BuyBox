@@ -148,33 +148,25 @@ async def scrape_asin(context, asin, results):
             # Extract Price
             # =========================
             price_val = None
-
-            # Primary selectors (strictly scoped to the main product display)
-            price_selectors = [
-                "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+            price_locators = [
                 "#corePriceDisplay_desktop_feature_div .a-price",
-                "#corePrice_desktop .a-price .a-offscreen",
                 "#corePrice_desktop .a-price",
-                "#corePrice_feature_div .a-price .a-offscreen",
-                "#corePrice_feature_div .a-price",
-                "#price_inside_buybox",
-                "#newBuyBoxPrice .a-offscreen",
-                "#newBuyBoxPrice",
-                ".apexPriceToPay .a-offscreen",
+                "#tp_price_block_total_price_ww .a-price",
                 ".apexPriceToPay",
+                ".apex-pricetopay-value",
                 "#priceblock_ourprice",
                 "#priceblock_dealprice",
-                "#buyBoxAccordion .a-price .a-offscreen",
-                "#buyBoxAccordion .a-price"
+                "span.a-color-price",
+                ".a-price"
             ]
 
-            for selector in price_selectors:
+            for selector in price_locators:
                 try:
-                    locator = page.locator(selector).first
-                    if await locator.count() > 0:
-                        text = (await locator.text_content()).strip()
-                        if text:
-                            price_val = clean_price(text)
+                    elements = await page.locator(selector).all()
+                    if elements:
+                        price_text = await elements[0].text_content()
+                        if price_text:
+                            price_val = clean_price(price_text)
                             if price_val:
                                 print(f"[{asin}] Price found using selector: {selector} -> ${price_val}")
                                 break
