@@ -156,8 +156,11 @@ async def scrape_asin(context, asin, results):
                 ".apex-pricetopay-value",
                 "#priceblock_ourprice",
                 "#priceblock_dealprice",
-                "span.a-color-price",
-                ".a-price"
+                "#corePriceDisplay_desktop_feature_div span.a-color-price",
+                "#corePrice_desktop span.a-color-price",
+                "#apex_desktop .a-price",
+                "#buyBoxAccordion .a-price",
+                "#newBuyBoxPrice .a-price"
             ]
 
             for selector in price_locators:
